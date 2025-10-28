@@ -1,0 +1,5 @@
+.streamlit/*
+.venv/*
+
+# unused file
+utils/__pycache__/*

@@ -1,0 +1,10 @@
+streamlit>=1.37
+pandas
+numpy
+plotly
+altair
+supabase>=2.4.0
+httpx
+pydantic
+python-dotenv
+psycopg
