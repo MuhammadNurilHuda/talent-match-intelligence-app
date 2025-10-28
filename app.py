@@ -32,6 +32,9 @@ if submit_btn:
         st.sidebar.success(f"Benchmark saved. job_vacancy_id = {jid}")
         st.session_state["jid"] = jid
 
+active_jid = st.session_state.get("jid")
+st.sidebar.caption(f"Active JID: {active_jid or 'latest'}")
+
 st.title("AI Talent App & Dashboard")
 
 tab1, tab2, tab3, tab4 = st.tabs(["AI Job Profile", "Ranked Talent List", "Candidate Profile", "Insights"])
@@ -40,19 +43,22 @@ tab1, tab2, tab3, tab4 = st.tabs(["AI Job Profile", "Ranked Talent List", "Candi
 with tab1:
     st.subheader("AI-Generated Job Profile")
     if role_name:
-        with st.spinner("Generating profile via OpenRouter..."):
-            txt = generate_job_profile(role_name, job_level, role_purpose)
-        st.markdown(txt)
-        st.caption("Note: This AI section clarifies the role definition for analysis; it is not intended for public job postings.")
+        try:
+            with st.spinner("Generating profile via OpenRouter..."):
+                txt = generate_job_profile(role_name, job_level, role_purpose)
+            st.markdown(txt)
+            st.caption("Note: This AI section clarifies the role definition for analysis; it is not intended for public job postings.")
+        except Exception:
+            st.warning("AI service is temporarily unavailable. The rest of the dashboard is fully functional.")
     else:
         st.info("Fill the Vacancy Setup on the left to generate an automatic job profile.")
 
 # -------------------- Tab 2: Ranked Talent List --------------------
 with tab2:
     st.subheader("Ranked Talent List")
-    df = fetch_leaderboard(limit=200)
+    df = fetch_leaderboard(limit=200, job_vacancy_id=active_jid)
     if df.empty:
-        st.warning("No data found in view mart.ai_success_score.")
+        st.warning("Belum ada data pada view mart.ai_success_score_operational.")
     else:
         st.dataframe(df, use_container_width=True)
         st.caption("Pick an employee_id and paste it into the 'Candidate Profile' tab to view details.")
@@ -61,10 +67,9 @@ with tab2:
 with tab3:
     st.subheader("Candidate Profile (Explain 'Why')")
     emp_id = st.text_input("Employee ID", placeholder="EMP100358")
-    # Sensitivity control for gaps (does not change scoring logic)
     gap_threshold = st.slider("Gap threshold (tv_match_rate)", 0.50, 0.95, 0.70, 0.05)
     if emp_id:
-        tgv = fetch_candidate_tgv(emp_id)
+        tgv = fetch_candidate_tgv(emp_id, job_vacancy_id=active_jid)
         if tgv.empty:
             st.warning("Candidate not found in the view.")
         else:
@@ -74,7 +79,7 @@ with tab3:
 
             # Choose TGV for variable-level bars
             pick_tgv = st.selectbox("Choose a TGV to show detailed TVs:", sorted(tgv["tgv_name"].unique().tolist()))
-            tv = fetch_candidate_tv(emp_id, pick_tgv)
+            tv = fetch_candidate_tv(emp_id, pick_tgv, job_vacancy_id=active_jid)
 
             # Robust typing (does not change logic—only ensures proper display)
             for col in ["baseline_score", "user_score", "tv_match_rate"]:
@@ -105,14 +110,14 @@ with tab3:
 # -------------------- Tab 4: Insights --------------------
 with tab4:
     st.subheader("Insights & Fairness Glance")
-    dist = fetch_distribution()
+    dist = fetch_distribution(job_vacancy_id=active_jid)
     if not dist.empty:
         st.plotly_chart(hist_distribution(dist), use_container_width=True)
         st.markdown(
             f"- N candidates: **{len(dist)}**  •  Mean: **{dist['final_match_rate'].mean():.3f}**  "
             f"•  P75: **{dist['final_match_rate'].quantile(0.75):.3f}**"
         )
-    fair = fetch_fairness()
+    fair = fetch_fairness(job_vacancy_id=active_jid)
     if not fair.empty:
         st.markdown("**Average Final Match by Grade / Education / Major**")
         st.dataframe(fair, use_container_width=True, height=320)

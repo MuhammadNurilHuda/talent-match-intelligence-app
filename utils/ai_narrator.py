@@ -5,9 +5,9 @@ from typing import List
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 _DEFAULT_MODELS = [
+    "openai/gpt-oss-20b:free",
     "deepseek/deepseek-r1-0528:free",
     "mistralai/mistral-small-3.2-24b-instruct:free",
-    "openai/gpt-oss-20b:free"
 ]
 
 

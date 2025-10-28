@@ -34,73 +34,127 @@ def upsert_benchmark(role_name: str, job_level: str, role_purpose: str,
             conn.commit()
             return cur.fetchone()["job_vacancy_id"]
 
-def fetch_leaderboard(limit: int = 200) -> pd.DataFrame:
+def fetch_leaderboard(limit: int = 200, job_vacancy_id: Optional[str] = None) -> pd.DataFrame:
     sql = """
+    with jid AS (
+        select %s::text as job_vacancy_id
+    ),
+    jid_final AS (
+        select coalesce(j.job_vacancy_id,
+                        (select job_vacancy_id
+                           from config.talent_benchmarks
+                           order by created_at desc
+                           limit 1)) as job_vacancy_id
+        from jid j
+    )
     select 
-           a.employee_id,
-           e.fullname,
-           a.directorate,      -- ambil dari ai_success_score
-           a.role,             -- ambil dari ai_success_score (bukan e.role)
-           a.grade,            -- ambil dari ai_success_score
-           max(a.final_match_rate) as final_match_rate,
-           max(case when a.tgv_name='Competency'   then a.tgv_match_rate end) as tgv_comp,
-           max(case when a.tgv_name='Psychometric' then a.tgv_match_rate end) as tgv_psy,
-           max(case when a.tgv_name='Strengths'    then a.tgv_match_rate end) as tgv_str,
-           max(case when a.tgv_name='Context'      then a.tgv_match_rate end) as tgv_ctx
-    from mart.ai_success_score a
+        a.employee_id,
+        e.fullname,
+        a.directorate,
+        a.role,
+        a.grade,
+        max(a.final_match_rate) as final_match_rate,
+        max(case when a.tgv_name='Competency'   then a.tgv_match_rate end) as tgv_comp,
+        max(case when a.tgv_name='Psychometric' then a.tgv_match_rate end) as tgv_psy,
+        max(case when a.tgv_name='Strengths'    then a.tgv_match_rate end) as tgv_str,
+        max(case when a.tgv_name='Context'      then a.tgv_match_rate end) as tgv_ctx
+    from mart.ai_success_score_operational a
+    join jid_final jf on jf.job_vacancy_id = a.job_vacancy_id
     join mart.v_employees_org e using (employee_id)
     group by a.employee_id, e.fullname, a.directorate, a.role, a.grade
     order by final_match_rate desc
     limit %s;
     """
     with get_conn() as conn:
-        df = pd.read_sql(sql, conn, params=(limit,))
-    return df
+        return pd.read_sql(sql, conn, params=(job_vacancy_id, limit))
 
-def fetch_candidate_tgv(emp_id: str) -> pd.DataFrame:
+def fetch_candidate_tgv(employee_id: str, job_vacancy_id: Optional[str] = None) -> pd.DataFrame:
     sql = """
-    select tgv_name, max(tgv_match_rate) as tgv_match_rate
-    from mart.ai_success_score
-    where employee_id = %s
-    group by tgv_name
+    with jid AS (select %s::text as job_vacancy_id),
+    jid_final AS (
+        select coalesce(j.job_vacancy_id,
+                        (select job_vacancy_id
+                           from config.talent_benchmarks
+                           order by created_at desc
+                           limit 1)) as job_vacancy_id
+        from jid j
+    )
+    select
+      t.employee_id, t.directorate, t.role, t.grade,
+      t.tgv_name, t.tgv_match_rate
+    from (
+      select
+        job_vacancy_id, employee_id, directorate, role, grade, tgv_name,
+        avg(tv_match_rate) as tgv_match_rate
+      from mart.ai_success_score_operational
+      where employee_id = %s
+      group by job_vacancy_id, employee_id, directorate, role, grade, tgv_name
+    ) t
+    join jid_final jf on jf.job_vacancy_id = t.job_vacancy_id
     order by tgv_name;
     """
     with get_conn() as conn:
-        return pd.read_sql(sql, conn, params=(emp_id,))
+        return pd.read_sql(sql, conn, params=(job_vacancy_id, employee_id))
 
-def fetch_candidate_tv(emp_id: str, tgv: str) -> pd.DataFrame:
+def fetch_candidate_tv(employee_id: str, tgv_name: str, job_vacancy_id: Optional[str] = None) -> pd.DataFrame:
     sql = """
-    select tv_name, baseline_score, user_score, tv_match_rate
-    from mart.ai_success_score
-    where employee_id = %s and tgv_name = %s
-    order by tv_name;
-    """
-    with get_conn() as conn:
-        return pd.read_sql(sql, conn, params=(emp_id, tgv))
-
-def fetch_distribution() -> pd.DataFrame:
-    sql = """
-    select distinct employee_id,
-           max(final_match_rate) over (partition by employee_id) as final_match_rate
-    from mart.ai_success_score;
-    """
-    with get_conn() as conn:
-        return pd.read_sql(sql, conn)
-    
-def fetch_fairness() -> pd.DataFrame:
-    sql = """
-    with base as (
-      select a.employee_id,
-             max(a.final_match_rate) as final_match_rate
-      from mart.ai_success_score a
-      group by a.employee_id
+    with jid AS (select %s::text as job_vacancy_id),
+    jid_final AS (
+        select coalesce(j.job_vacancy_id,
+                        (select job_vacancy_id
+                           from config.talent_benchmarks
+                           order by created_at desc
+                           limit 1)) as job_vacancy_id
+        from jid j
     )
-    select e.grade, e.education, e.major,
-           avg(b.final_match_rate) as avg_match, count(*) as n
-    from base b
-    join mart.v_employees_org e on e.employee_id = b.employee_id
-    group by e.grade, e.education, e.major
-    order by avg_match desc;
+    select
+      a.tv_name, a.baseline_score, a.user_score, a.tv_match_rate
+    from mart.ai_success_score_operational a
+    join jid_final jf on jf.job_vacancy_id = a.job_vacancy_id
+    where a.employee_id = %s
+      and a.tgv_name = %s
+    order by a.tv_name;
     """
     with get_conn() as conn:
-        return pd.read_sql(sql, conn)
+        return pd.read_sql(sql, conn, params=(job_vacancy_id, employee_id, tgv_name))
+
+def fetch_distribution(job_vacancy_id: Optional[str] = None) -> pd.DataFrame:
+    sql = """
+    with jid AS (select %s::text as job_vacancy_id),
+    jid_final AS (
+        select coalesce(j.job_vacancy_id,
+                        (select job_vacancy_id
+                           from config.talent_benchmarks
+                           order by created_at desc
+                           limit 1)) as job_vacancy_id
+        from jid j
+    )
+    select distinct a.employee_id, a.final_match_rate
+    from mart.ai_success_score_operational a
+    join jid_final jf on jf.job_vacancy_id = a.job_vacancy_id;
+    """
+    with get_conn() as conn:
+        return pd.read_sql(sql, conn, params=(job_vacancy_id,))
+    
+def fetch_fairness(job_vacancy_id: Optional[str] = None) -> pd.DataFrame:
+    sql = """
+    with jid AS (select %s::text as job_vacancy_id),
+    jid_final AS (
+        select coalesce(j.job_vacancy_id,
+                        (select job_vacancy_id
+                           from config.talent_benchmarks
+                           order by created_at desc
+                           limit 1)) as job_vacancy_id
+        from jid j
+    )
+    select
+      a.grade, e.education, e.major,
+      avg(a.final_match_rate) as avg_match
+    from mart.ai_success_score_operational a
+    join jid_final jf on jf.job_vacancy_id = a.job_vacancy_id
+    join mart.v_employees_org e using (employee_id)
+    group by a.grade, e.education, e.major
+    order by a.grade, e.education, e.major;
+    """
+    with get_conn() as conn:
+        return pd.read_sql(sql, conn, params=(job_vacancy_id,))
