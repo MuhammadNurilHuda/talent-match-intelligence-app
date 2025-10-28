@@ -50,7 +50,7 @@ with tab2:
         st.caption("Klik satu employee_id dan salin ke tab 'Candidate Profile' untuk melihat detail.")
 
 with tab3:
-    st.subheader("Candidate Profile (Explain 'Why')")
+    st.subheader("Candidate Profile")
     emp_id = st.text_input("Employee ID", placeholder="EMP100358")
     if emp_id:
         tgv = fetch_candidate_tgv(emp_id)

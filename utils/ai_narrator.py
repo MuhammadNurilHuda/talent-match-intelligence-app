@@ -4,8 +4,6 @@ from typing import List
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Allow overriding model (single) or a CSV list for fallbacks
-# Example: OPENROUTER_MODELS="deepseek/deepseek-chat-v3.1:free,qwen/qwen-2.5-7b-instruct:free"
 _DEFAULT_MODELS = [
     "deepseek/deepseek-r1-0528:free",
     "mistralai/mistral-small-3.2-24b-instruct:free",
@@ -34,7 +32,6 @@ def _post_openrouter(model: str, prompt: str, timeout: int = 60) -> str:
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        # Optional attribution headers (recommended by OpenRouter):
         "HTTP-Referer": os.environ.get("APP_URL", "https://streamlit.io"),
         "X-Title": os.environ.get("APP_NAME", "Talent Match Dashboard"),
     }
