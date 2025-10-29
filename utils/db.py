@@ -4,7 +4,7 @@ import psycopg
 from contextlib import contextmanager
 
 def _get_dsn() -> str:
-    # Prioritas: Streamlit secrets → env var
+    # Streamlit secrets → env var
     try:
         import streamlit as st
         if "PG_CONN" in st.secrets:

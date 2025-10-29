@@ -10,7 +10,7 @@ from .db import get_conn
 def parse_ids(raw: str) -> List[int]:
     if not raw:
         return []
-    # dukung "1, 2,3" atau baris baru
+    # "1, 2,3" or new line
     parts = [p.strip() for p in raw.replace("\n", ",").split(",")]
     return [int(p) for p in parts if p.isdigit()]
 
